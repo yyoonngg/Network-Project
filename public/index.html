@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Chat Room</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="login-container" id="login-container">
+        <h2>Login</h2>
+        <input id="username" type="text" placeholder="Enter your name">
+        <input id="password" type="password" placeholder="Enter your password">
+        <button onclick="login()">Login</button>
+    </div>
+    <div class="chat-container" id="chat-container" style="display:none;">
+        <div class="chat-header">
+            <h1>Chat Room</h1>
+        </div>
+        <div id="chat" class="chat-messages"></div>
+        <div class="chat-input">
+            <input id="message" type="text" placeholder="Type a message...">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        let username = '';
+
+        function login() {
+            username = document.getElementById('username').value;
+            if (username.trim() !== '') {
+                document.getElementById('login-container').style.display = 'none';
+                document.getElementById('chat-container').style.display = 'flex';
+            }
+        }
+
+        const socket = io();
+
+        socket.on('message', function (data) {
+            const chat = document.getElementById('chat');
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('chat-message');
+            if (data.username === username) {
+                messageElement.classList.add('my-message');
+            } else {
+                messageElement.classList.add('other-message');
+            }
+            messageElement.innerHTML = `<strong>${data.username}:</strong> ${data.message}`;
+            chat.appendChild(messageElement);
+            chat.scrollTop = chat.scrollHeight;
+        });
+
+        function sendMessage() {
+            const input = document.getElementById('message');
+            if (input.value.trim() !== '') {
+                socket.emit('message', { username: username, message: input.value });
+                input.value = '';
+            }
+        }
+    </script>
+</body>
+</html>

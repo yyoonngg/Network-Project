@@ -1,14 +1,37 @@
 const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
+const session = require('express-session');
+const cookieParser = require('cookie-parser');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const ftp = require('basic-ftp');
+const bodyParser = require('body-parser');
 require('dotenv').config();
 
 const app = express();
-const upload = multer({ dest: 'uploads/' });
+const server = http.createServer(app);
+const io = socketIo(server);
 
 app.use(express.static('public'));
+app.use(cookieParser());
+app.use(bodyParser.urlencoded({ extended: true }));
+
+const sessionMiddleware = session({
+    secret: 'supersecretkey12345!@#$%',
+    resave: false,
+    saveUninitialized: true,
+    cookie: {
+        secure: false,
+        httpOnly: true,
+        maxAge: 60000
+    }
+});
+
+app.use(sessionMiddleware);
+
+const upload = multer({ dest: 'uploads/' });
 
 async function uploadToFTP(filePath, fileName) {
     const client = new ftp.Client();
@@ -20,9 +43,7 @@ async function uploadToFTP(filePath, fileName) {
             password: process.env.FTP_PASS,
             secure: false
         });
-        console.log(`Uploading ${fileName} to FTP server...`);
-        await client.uploadFrom(filePath, `${process.env.FTP_UPLOAD_DIR}/${fileName}`);
-        console.log('FTP 업로드 성공:', fileName);
+        await client.uploadFrom(filePath, `/upload/${fileName}`);
     } catch (err) {
         console.error('FTP 연결 오류:', err);
     }
@@ -39,10 +60,7 @@ async function listFTPFiles() {
             password: process.env.FTP_PASS,
             secure: false
         });
-        console.log('파일 목록을 가져오는 중...');
-        const list = await client.list(process.env.FTP_UPLOAD_DIR);
-        console.log('파일 목록:', list);
-        return list.filter(item => item.isFile);  // 디렉토리가 아닌 파일만 반환
+        return await client.list('/upload');
     } catch (err) {
         console.error('FTP 연결 오류:', err);
         return [];
@@ -50,36 +68,7 @@ async function listFTPFiles() {
     client.close();
 }
 
-async function downloadFromFTP(fileName, res) {
-    const client = new ftp.Client();
-    client.ftp.verbose = true;
-    try {
-        await client.access({
-            host: process.env.FTP_HOST,
-            user: process.env.FTP_USER,
-            password: process.env.FTP_PASS,
-            secure: false
-        });
-        const tempFilePath = path.join(__dirname, 'downloads', fileName);
-        await client.downloadTo(tempFilePath, `${process.env.FTP_UPLOAD_DIR}/${fileName}`);
-        res.download(tempFilePath, fileName, (err) => {
-            if (err) {
-                console.error('파일 다운로드 오류:', err);
-            }
-            fs.unlinkSync(tempFilePath); // 임시 파일 삭제
-        });
-    } catch (err) {
-        console.error('FTP 연결 오류:', err);
-        res.status(500).send('파일 다운로드 오류');
-    }
-    client.close();
-}
-
 app.post('/upload', upload.single('file'), async (req, res) => {
-    console.log('파일 업로드 요청 수신');
-    if (!req.file) {
-        return res.status(400).send('파일이 업로드되지 않았습니다.');
-    }
     const filePath = path.join(__dirname, req.file.path);
     const fileName = req.file.originalname;
     await uploadToFTP(filePath, fileName);
@@ -89,18 +78,62 @@ app.post('/upload', upload.single('file'), async (req, res) => {
 
 app.get('/files', async (req, res) => {
     const files = await listFTPFiles();
-    console.log('파일 목록 전송:', files);
     res.send(files.map(file => ({
         name: file.name,
         url: `/download/${file.name}`
     })));
 });
 
-app.get('/download/:fileName', async (req, res) => {
-    const fileName = req.params.fileName;
-    await downloadFromFTP(fileName, res);
+app.get('/check-session', (req, res) => {
+    res.send(`Session ID: ${req.sessionID}`);
 });
 
-app.listen(4000, () => {
-    console.log('Server is listening on port 4000');
+app.get('/login', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
+
+app.post('/login', (req, res) => {
+    req.session.username = req.body.username;
+    res.redirect('/chat');
+});
+
+app.get('/chat', (req, res) => {
+    if (!req.session.username) {
+        return res.redirect('/login');
+    }
+    res.sendFile(path.join(__dirname, 'public', 'chat.html'));
+});
+
+app.get('/download/:filename', (req, res) => {
+    const fileName = req.params.filename;
+    const filePath = path.join(__dirname, 'uploads', fileName);
+    res.download(filePath);
+});
+
+io.use((socket, next) => {
+    sessionMiddleware(socket.request, socket.request.res || {}, next);
+});
+
+io.on('connection', (socket) => {
+    console.log('New client connected');
+    
+    if (socket.request.session.username) {
+        const username = socket.request.session.username;
+        socket.emit('message', `${username}님이 입장하셨습니다.`);
+    }
+
+    socket.on('message', (data) => {
+        const username = socket.request.session.username;
+        io.emit('message', `${username}: ${data}`);
+    });
+
+    socket.on('disconnect', () => {
+        console.log('Client disconnected');
+    });
+});
+
+app.get('/', (req, res) => {
+    res.redirect('/login');
+});
+
+server.listen(4000, () => console.log('Listening on port 4000'));

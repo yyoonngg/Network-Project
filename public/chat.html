@@ -1,34 +1,20 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Chat Application</title>
+    <title>Chat and Cloud Application</title>
     <script src="/socket.io/socket.io.js"></script>
-    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="chat-container">
-        <div class="chat-header">
-            <h1>Chat Room</h1>
-            <button onclick="openCloud()">Cloud</button>
-        </div>
-        <div id="chat" class="chat-messages"></div>
-        <div class="chat-input">
-            <input id="message" type="text" placeholder="Type a message...">
-            <button onclick="sendMessage()">Send</button>
-        </div>
-    </div>
+    <h1>Chat Application</h1>
+    <input id="message" type="text">
+    <button onclick="sendMessage()">Send</button>
+    <ul id="messages"></ul>
 
-    <div class="cloud-container" id="cloud-container" style="display:none;">
-        <div class="cloud-header">
-            <h1>Cloud Storage</h1>
-            <button onclick="closeCloud()">Back to Chat</button>
-        </div>
-        <div id="file-list" class="file-list"></div>
-        <div class="file-upload">
-            <input id="file-input" type="file">
-            <button onclick="uploadFile()">Upload File</button>
-        </div>
-    </div>
+    <h1>Cloud Service</h1>
+    <input id="fileInput" type="file">
+    <button onclick="uploadFile()">Upload</button>
+    <button onclick="fetchFileList()">Refresh File List</button>
+    <ul id="fileList"></ul>
 
     <script>
         const socket = io();
@@ -38,86 +24,67 @@
         });
 
         socket.on('message', (data) => {
-            const chat = document.getElementById('chat');
-            const messageElement = document.createElement('div');
-            messageElement.classList.add('chat-message');
-            if (data.username === username) {
-                messageElement.classList.add('my-message');
-            } else {
-                messageElement.classList.add('other-message');
-            }
-            messageElement.innerHTML = `<strong>${data.username}:</strong> ${data.message}`;
-            chat.appendChild(messageElement);
-            chat.scrollTop = chat.scrollHeight;
+            const li = document.createElement('li');
+            li.textContent = data;
+            document.getElementById('messages').appendChild(li);
         });
 
-        let username = '';
-
-        document.addEventListener('DOMContentLoaded', () => {
-            username = localStorage.getItem('username');
-            if (!username) {
-                window.location.href = '/login.html';
-                return;
-            }
-
-            // 세션 ID 쿠키에 저장
-            fetch('/get-session-id')
-                .then(response => response.json())
-                .then(data => {
-                    document.cookie = `sessionId=${data.sessionId}; path=/`;
-                });
-
-            socket.emit('message', { username: username, message: 'has joined the chat' });
-        });
-
-        function openCloud() {
-            document.querySelector('.chat-container').style.display = 'none';
-            document.querySelector('.cloud-container').style.display = 'flex';
-            loadFiles();
-        }
-
-        function closeCloud() {
-            document.querySelector('.cloud-container').style.display = 'none';
-            document.querySelector('.chat-container').style.display = 'flex';
-        }
-
-        function loadFiles() {
-            fetch('/files')
-                .then(response => response.json())
-                .then(data => {
-                    const fileList = document.getElementById('file-list');
-                    fileList.innerHTML = '';
-                    data.forEach(file => {
-                        const fileElement = document.createElement('div');
-                        fileElement.classList.add('file-item');
-                        fileElement.innerHTML = `<a href="${file.url}" target="_blank">${file.name}</a>`;
-                        fileList.appendChild(fileElement);
-                    });
-                });
+        function sendMessage() {
+            const message = document.getElementById('message').value;
+            socket.emit('message', message);
+            document.getElementById('message').value = '';
         }
 
         function uploadFile() {
-            const fileInput = document.getElementById('file-input');
+            const fileInput = document.getElementById('fileInput');
             const file = fileInput.files[0];
             const formData = new FormData();
             formData.append('file', file);
+            console.log('파일 업로드 시도:', file.name);
 
             fetch('/upload', {
                 method: 'POST',
                 body: formData
             })
-            .then(response => response.json())
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    throw new Error('File upload failed');
+                }
+            })
             .then(data => {
-                alert('File uploaded successfully');
-                loadFiles();
+                console.log('File uploaded:', data);
+                fetchFileList();
+            })
+            .catch(error => {
+                console.error('Error uploading file:', error);
             });
         }
 
-        function sendMessage() {
-            const message = document.getElementById('message').value;
-            socket.emit('message', { username: username, message: message });
-            document.getElementById('message').value = '';
+        function fetchFileList() {
+            console.log('파일 목록 요청');
+            fetch('/files')
+            .then(response => response.json())
+            .then(files => {
+                const fileList = document.getElementById('fileList');
+                fileList.innerHTML = '';
+                files.forEach(file => {
+                    const li = document.createElement('li');
+                    const link = document.createElement('a');
+                    link.href = file.url;
+                    link.textContent = file.name;
+                    link.download = file.name;
+                    li.appendChild(link);
+                    fileList.appendChild(li);
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching file list:', error);
+            });
         }
+
+        fetchFileList();
     </script>
 </body>
 </html>

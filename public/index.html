@@ -1,119 +1,14 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Chat and Cloud Application</title>
-    <script src="/socket.io/socket.io.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-        }
-        h1 {
-            color: #333;
-        }
-        #messages, #fileList {
-            list-style-type: none;
-            padding: 0;
-        }
-        #messages li, #fileList li {
-            padding: 8px;
-            border-bottom: 1px solid #ddd;
-        }
-        input[type="text"] {
-            width: 300px;
-            padding: 8px;
-        }
-        button {
-            padding: 8px 16px;
-            margin: 4px 0;
-            cursor: pointer;
-        }
-        #fileInput {
-            margin-top: 8px;
-        }
-    </style>
+    <title>Login</title>
 </head>
 <body>
-    <h1>Chat Application</h1>
-    <input id="message" type="text" placeholder="Type your message here...">
-    <button onclick="sendMessage()">Send</button>
-    <ul id="messages"></ul>
-
-    <h1>Cloud Service</h1>
-    <input id="fileInput" type="file">
-    <button onclick="uploadFile()">Upload</button>
-    <button onclick="fetchFileList()">Refresh File List</button>
-    <ul id="fileList"></ul>
-
-    <script>
-        const socket = io();
-
-        socket.on('connect', () => {
-            console.log('Connected to server');
-        });
-
-        socket.on('message', (data) => {
-            const li = document.createElement('li');
-            li.textContent = data;
-            document.getElementById('messages').appendChild(li);
-        });
-
-        function sendMessage() {
-            const message = document.getElementById('message').value;
-            socket.emit('message', message);
-            document.getElementById('message').value = '';
-        }
-
-        function uploadFile() {
-            const fileInput = document.getElementById('fileInput');
-            const file = fileInput.files[0];
-            if (!file) {
-                alert('Please select a file to upload');
-                return;
-            }
-            const formData = new FormData();
-            formData.append('file', file);
-
-            console.log('파일 업로드 시도:', file.name);
-
-            fetch('/upload', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log('File uploaded:', data);
-                fetchFileList();  // 파일 업로드 후 자동으로 목록 갱신
-            })
-            .catch(error => {
-                console.error('Error uploading file:', error);
-            });
-        }
-
-        function fetchFileList() {
-            console.log('파일 목록 요청');
-            fetch('/files')
-            .then(response => response.json())
-            .then(files => {
-                console.log('파일 목록 수신:', files);
-                const fileList = document.getElementById('fileList');
-                fileList.innerHTML = '';
-                files.forEach(file => {
-                    const li = document.createElement('li');
-                    const link = document.createElement('a');
-                    link.href = file.url;
-                    link.textContent = file.name;
-                    link.download = file.name;
-                    li.appendChild(link);
-                    fileList.appendChild(li);
-                });
-            })
-            .catch(error => {
-                console.error('Error fetching file list:', error);
-            });
-        }
-
-        // 페이지가 로드될 때 초기 파일 목록을 가져옵니다.
-        fetchFileList();
-    </script>
+    <h1>Login Page</h1>
+    <form action="/login" method="POST">
+        <label for="username">Username:</label>
+        <input type="text" id="username" name="username" required>
+        <button type="submit">Login</button>
+    </form>
 </body>
 </html>

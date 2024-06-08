@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Chat Room</title>
+    <title>Chat Application</title>
+    <script src="/socket.io/socket.io.js"></script>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -15,6 +15,7 @@
     <div class="chat-container" id="chat-container" style="display:none;">
         <div class="chat-header">
             <h1>Chat Room</h1>
+            <button onclick="openCloud()">Cloud</button>
         </div>
         <div id="chat" class="chat-messages"></div>
         <div class="chat-input">
@@ -23,21 +24,31 @@
         </div>
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
+    <div class="cloud-container" id="cloud-container" style="display:none;">
+        <div class="cloud-header">
+            <h1>Cloud Storage</h1>
+            <button onclick="closeCloud()">Back to Chat</button>
+        </div>
+        <div id="file-list" class="file-list"></div>
+        <div class="file-upload">
+            <input id="file-input" type="file">
+            <button onclick="uploadFile()">Upload File</button>
+        </div>
+    </div>
+
     <script>
-        let username = '';
-
-        function login() {
-            username = document.getElementById('username').value;
-            if (username.trim() !== '') {
-                document.getElementById('login-container').style.display = 'none';
-                document.getElementById('chat-container').style.display = 'flex';
-            }
-        }
-
         const socket = io();
 
-        socket.on('message', function (data) {
+        socket.on('connect', () => {
+            console.log('Connected to server');
+        });
+
+        socket.on('sessionId', (data) => {
+            console.log('Session ID:', data.sessionId);
+            document.cookie = `sessionId=${data.sessionId}; path=/`; // 쿠키 설정
+        });
+
+        socket.on('message', (data) => {
             const chat = document.getElementById('chat');
             const messageElement = document.createElement('div');
             messageElement.classList.add('chat-message');
@@ -51,12 +62,63 @@
             chat.scrollTop = chat.scrollHeight;
         });
 
-        function sendMessage() {
-            const input = document.getElementById('message');
-            if (input.value.trim() !== '') {
-                socket.emit('message', { username: username, message: input.value });
-                input.value = '';
+        let username = '';
+
+        function login() {
+            username = document.getElementById('username').value;
+            if (username.trim() !== '') {
+                document.getElementById('login-container').style.display = 'none';
+                document.getElementById('chat-container').style.display = 'flex';
             }
+        }
+
+        function openCloud() {
+            document.getElementById('chat-container').style.display = 'none';
+            document.getElementById('cloud-container').style.display = 'flex';
+            loadFiles();
+        }
+
+        function closeCloud() {
+            document.getElementById('cloud-container').style.display = 'none';
+            document.getElementById('chat-container').style.display = 'flex';
+        }
+
+        function loadFiles() {
+            fetch('/files')
+                .then(response => response.json())
+                .then(data => {
+                    const fileList = document.getElementById('file-list');
+                    fileList.innerHTML = '';
+                    data.forEach(file => {
+                        const fileElement = document.createElement('div');
+                        fileElement.classList.add('file-item');
+                        fileElement.innerHTML = `<a href="${file.url}" target="_blank">${file.name}</a>`;
+                        fileList.appendChild(fileElement);
+                    });
+                });
+        }
+
+        function uploadFile() {
+            const fileInput = document.getElementById('file-input');
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('File uploaded successfully');
+                loadFiles();
+            });
+        }
+
+        function sendMessage() {
+            const message = document.getElementById('message').value;
+            socket.emit('message', { username: username, message: message });
+            document.getElementById('message').value = '';
         }
     </script>
 </body>

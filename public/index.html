@@ -2,6 +2,25 @@
 <html>
 <head>
     <title>Login</title>
+    <script>
+        // 쿠키 값을 가져오는 함수
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            console.log(value);
+            console.log(parts);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+
+        // 페이지 로드 시 쿠키를 확인하고, 토큰이 있으면 chat.html로 리디렉션
+        window.onload = function() {
+            const token = getCookie('auth_token');
+            console.log(token);
+            if (token) {
+                window.location.href = '/chat';
+            }
+        }
+    </script>
 </head>
 <body>
     <h1>Login Page</h1>

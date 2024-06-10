@@ -1,13 +1,13 @@
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
-const session = require('express-session');
 const cookieParser = require('cookie-parser');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const ftp = require('basic-ftp');
 const bodyParser = require('body-parser');
+const crypto = require('crypto'); // 토큰 생성에 사용
 require('dotenv').config();
 
 const app = express();
@@ -18,18 +18,7 @@ app.use(express.static('public'));
 app.use(cookieParser());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-const sessionMiddleware = session({
-    secret: 'supersecretkey12345!@#$%',
-    resave: false,
-    saveUninitialized: true,
-    cookie: {
-        secure: false,
-        httpOnly: true,
-        maxAge: 60000
-    }
-});
-
-app.use(sessionMiddleware);
+const users = {}; // 토큰과 사용자 정보를 저장하기 위한 객체
 
 const upload = multer({ dest: 'uploads/' });
 
@@ -93,12 +82,16 @@ app.get('/login', (req, res) => {
 });
 
 app.post('/login', (req, res) => {
-    req.session.username = req.body.username;
+    const username = req.body.username;
+    const token = crypto.randomBytes(16).toString('hex'); // 고유 토큰 생성
+    users[token] = username; // 사용자 정보를 저장
+    res.cookie('auth_token', token, { httpOnly: true });
     res.redirect('/chat');
 });
 
 app.get('/chat', (req, res) => {
-    if (!req.session.username) {
+    const token = req.cookies.auth_token;
+    if (!token || !users[token]) {
         return res.redirect('/login');
     }
     res.sendFile(path.join(__dirname, 'public', 'chat.html'));
@@ -110,29 +103,38 @@ app.get('/download/:filename', (req, res) => {
     res.download(filePath);
 });
 
-io.use((socket, next) => {
-    sessionMiddleware(socket.request, socket.request.res || {}, next);
-});
+// 쿠키 파서를 소켓 IO와 함께 사용
+const wrap = middleware => (socket, next) => middleware(socket.request, {}, next);
+io.use(wrap(cookieParser()));
 
 io.on('connection', (socket) => {
-    console.log('New client connected');
-    
-    if (socket.request.session.username) {
-        const username = socket.request.session.username;
+    console.log(`New client connected: ${socket.id}`);
+
+    const token = socket.request.cookies.auth_token;
+    if (token && users[token]) {
+        const username = users[token];
         socket.emit('message', `${username}님이 입장하셨습니다.`);
+        console.log(`${username}님이 입장하셨습니다. (socket id: ${socket.id})`);
+
+        socket.on('message', (data) => {
+            io.emit('message', `${username}: ${data}`);
+            console.log(`Message from ${username}: ${data} (socket id: ${socket.id})`);
+        });
+    } else {
+        console.log(`Invalid token for socket id: ${socket.id}`);
+        socket.disconnect();
     }
 
-    socket.on('message', (data) => {
-        const username = socket.request.session.username;
-        io.emit('message', `${username}: ${data}`);
-    });
-
     socket.on('disconnect', () => {
-        console.log('Client disconnected');
+        console.log(`Client disconnected: ${socket.id}`);
     });
 });
 
 app.get('/', (req, res) => {
+    const token = req.cookies.auth_token;
+    if (token && users[token]) {
+        return res.redirect('/chat');
+    }
     res.redirect('/login');
 });
 
